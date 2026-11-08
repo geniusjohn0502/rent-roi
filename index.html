@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>包租物件投報率試算</title>
+<meta name="description" content="包租代管物件的投報率試算：成本明細、房間配置、合約參數，算完可產生代碼分享給老師和同學。">
+<meta property="og:title" content="包租物件投報率試算">
+<meta property="og:description" content="點開就能看到這間物件的成本、租金和投報率。">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f7f7f5; --bg3: #f0efe9;
+    --bg-info: #e8f0fb; --bg-success: #eaf3de;
+    --bg-warn: #faeeda; --bg-danger: #fcebeb;
+    --text: #1a1a18; --text2: #6b6b68; --text3: #9b9b97;
+    --text-info: #185fa5; --text-success: #3b6d11;
+    --text-warn: #854f0b; --text-danger: #a32d2d;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --radius: 8px; --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1c; --bg2: #2a2a27; --bg3: #333330;
+      --bg-info: #0c2240; --bg-success: #172604;
+      --bg-warn: #2d1a04; --bg-danger: #280e0e;
+      --text: #f0efe9; --text2: #a8a8a4; --text3: #6b6b68;
+      --text-info: #85b7eb; --text-success: #97c459;
+      --text-warn: #ef9f27; --text-danger: #f09595;
+      --border: rgba(255,255,255,0.12); --border2: rgba(255,255,255,0.22);
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang TC", sans-serif; background: var(--bg3); color: var(--text); min-height: 100vh; padding: 2rem 1rem; }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 1rem; }
+  h3 { font-size: 12px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+  .section { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
+  .tab-row { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .tab { font-size: 13px; padding: 6px 16px; border: 0.5px solid var(--border); border-radius: 20px; cursor: pointer; background: none; color: var(--text2); transition: all 0.15s; }
+  .tab:hover { background: var(--bg2); }
+  .tab.active { background: var(--bg-info); color: var(--text-info); border-color: transparent; font-weight: 500; }
+  .tab.tab-export { border-color: #1a6636; color: #1a6636; }
+  .tab.tab-export:hover { background: var(--bg-success); }
+  .tab.tab-export.active { background: #1a6636; color: #fff; border-color: transparent; }
+  input[type="number"], input[type="text"], select {
+    background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 14px; padding: 6px 10px; width: 100%; height: 36px; outline: none; transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--border2); box-shadow: 0 0 0 2px rgba(24,95,165,0.15); }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--text2); }
+  .field .hint { font-size: 11px; color: var(--text3); }
+  .input-wrap { display: flex; align-items: center; gap: 6px; }
+  .input-wrap input { flex: 1; min-width: 0; }
+  .input-wrap span { font-size: 12px; color: var(--text3); white-space: nowrap; }
+
+  /* 物件存檔列 */
+  .save-bar { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 12px 14px; margin-bottom: 1rem; }
+  .save-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .save-row + .save-row { margin-top: 8px; }
+  .save-row label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .save-row .grow { flex: 1; min-width: 160px; }
+  .btn { font-size: 13px; height: 36px; padding: 0 14px; border-radius: var(--radius); border: 0.5px solid var(--border); background: none; color: var(--text); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+  .btn:hover { background: var(--bg2); }
+  .btn-primary { background: var(--text-info); color: #fff; border-color: transparent; }
+  .btn-primary:hover { background: var(--text-info); opacity: 0.88; }
+  .btn-danger { color: var(--text-danger); }
+  .btn-danger:hover { background: var(--bg-danger); }
+  .btn-small { font-size: 12px; height: 30px; padding: 0 10px; color: var(--text2); }
+  .save-status { font-size: 12px; color: var(--text3); }
+  .save-status.dirty { color: var(--text-warn); }
+  .save-status.ok { color: var(--text-success); }
+
+  /* 分享代碼 */
+  .code-panel { margin-top: 10px; padding: 12px; border-radius: var(--radius); background: var(--bg-info); }
+  .code-panel[hidden] { display: none; }
+  .code-panel .code-label { font-size: 12px; color: var(--text-info); font-weight: 500; margin-bottom: 6px; display: block; }
+  .code-panel textarea { width: 100%; min-height: 72px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: var(--radius); border: 0.5px solid var(--border); background: var(--bg); color: var(--text); word-break: break-all; outline: none; }
+  .code-panel .save-row { margin-top: 8px; }
+  .code-msg { font-size: 12px; color: var(--text-success); }
+  .code-msg.err { color: var(--text-danger); }
+
+  /* Cost table — 欄位：項目 | 單價 | 數量 | 小計 | ✕ */
+  .cost-cols { grid-template-columns: 2fr 100px 70px 100px 28px; }
+  .cost-header { display: grid; gap: 6px; margin-bottom: 4px; }
+  .cost-header span { font-size: 11px; color: var(--text2); }
+  .cost-header span.r, .cost-row .subtotal-cell { text-align: right; }
+  .cost-row { display: grid; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .cost-row input[type="number"] { text-align: right; }
+  .subtotal-cell {
+    font-size: 13px; font-weight: 500; color: var(--text);
+    background: var(--bg2); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 6px 10px; height: 36px;
+    display: flex; align-items: center; justify-content: flex-end;
+  }
+  .auto-cell { font-size: 13px; color: var(--text2); background: var(--bg2); border-radius: var(--radius); padding: 6px 10px; height: 36px; display: flex; align-items: center; justify-content: flex-end; }
+  .auto-name { font-size: 13px; color: var(--text); background: var(--bg2); border-radius: var(--radius); padding: 6px 10px; min-height: 36px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .auto-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: var(--bg-info); color: var(--text-info); white-space: nowrap; }
+  .rent-field { background: var(--bg-info); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
+  .rent-field label { color: var(--text-info); font-weight: 500; }
+  .rent-field input { font-size: 16px; font-weight: 500; }
+
+  .remove-btn { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 15px; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; transition: all 0.15s; }
+  .remove-btn:hover { background: var(--bg-danger); color: var(--text-danger); }
+  .add-btn { font-size: 13px; color: var(--text-info); background: none; border: 0.5px solid var(--border); border-radius: var(--radius); padding: 6px 12px; cursor: pointer; margin-top: 8px; transition: all 0.15s; }
+  .add-btn:hover { background: var(--bg-info); border-color: transparent; }
+  .sep { border: none; border-top: 0.5px solid var(--border); margin: 10px 0; }
+  .spread-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 4px 0; gap: 12px; }
+  .spread-row span:first-child { color: var(--text2); }
+  .spread-row span:last-child { font-weight: 500; white-space: nowrap; }
+  .spread-row.total span:last-child { font-size: 15px; color: var(--text-success); }
+  .spread-row.neg span:last-child { color: var(--text-danger); }
+  .total-bar { background: var(--bg-info); border-radius: var(--radius); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .total-bar span { font-size: 13px; color: var(--text-info); }
+  .total-bar strong { font-size: 16px; font-weight: 500; color: var(--text-info); }
+  .room-header { display: grid; grid-template-columns: 2fr 3fr 3fr 28px; gap: 8px; margin-bottom: 6px; }
+  .room-header span { font-size: 11px; color: var(--text2); }
+  .room-row { display: grid; grid-template-columns: 2fr 3fr 3fr 28px; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .result-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: 12px; }
+  .metric.highlight { background: var(--bg-info); }
+  .metric .label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .metric.highlight .label { color: var(--text-info); }
+  .metric .value { font-size: 22px; font-weight: 500; color: var(--text); }
+  .metric.highlight .value { color: var(--text-info); }
+  .metric .sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 500; margin-left: 4px; vertical-align: middle; }
+  .badge-g { background: var(--bg-success); color: var(--text-success); }
+  .badge-w { background: var(--bg-warn); color: var(--text-warn); }
+  .badge-r { background: var(--bg-danger); color: var(--text-danger); }
+  .note { font-size: 12px; color: var(--text2); line-height: 1.9; border-top: 0.5px solid var(--border); padding-top: 10px; margin-top: 4px; }
+  .note strong { color: var(--text); }
+  footer { text-align: center; font-size: 12px; color: var(--text3); margin-top: 2rem; padding-bottom: 1rem; }
+
+  /* Export tab */
+  .export-box { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 2rem 1.5rem; margin-bottom: 1rem; text-align: center; }
+  .export-icon { font-size: 42px; margin-bottom: 1rem; display: block; }
+  .export-desc { font-size: 13px; color: var(--text2); line-height: 1.8; margin-bottom: 1.5rem; }
+  .filename-field { display: flex; gap: 8px; align-items: center; margin-bottom: 1.5rem; text-align: left; max-width: 420px; margin-left: auto; margin-right: auto; }
+  .filename-field label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .filename-field input { flex: 1; font-size: 15px; height: 42px; }
+  .filename-field span { font-size: 13px; color: var(--text3); white-space: nowrap; }
+  .export-btn { display: inline-flex; align-items: center; gap: 8px; background: #1a6636; color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 500; padding: 12px 32px; cursor: pointer; transition: background 0.15s; }
+  .export-btn:hover { background: #14522a; }
+  .export-hints { background: var(--bg2); border-radius: var(--radius-lg); padding: 1rem 1.25rem; }
+  .export-hints ol { padding-left: 1.2rem; font-size: 13px; color: var(--text2); line-height: 2.1; }
+  .export-hints li strong { color: var(--text); }
+
+  @media (max-width: 520px) {
+    .cost-cols { grid-template-columns: 1.5fr 85px 60px 85px 28px; }
+    .result-grid { grid-template-columns: 1fr; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+
+  /* Print / PDF */
+  @media print {
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff !important; color: #000 !important; padding: 0 !important; font-family: "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif; font-size: 10.5pt; }
+    .container { max-width: 100% !important; margin: 0 !important; }
+    h1, .tab-row, .save-bar, footer, #tab0, #tab1, #tab2, #tab3, #tab4 { display: none !important; }
+    #pdf-report { display: block !important; }
+    #pdf-report .pdf-title { font-size: 17pt; font-weight: bold; margin-bottom: 3pt; padding-bottom: 8pt; border-bottom: 2pt solid #000; }
+    #pdf-report .pdf-subtitle { font-size: 8.5pt; color: #555; margin-bottom: 16pt; }
+    #pdf-report .pdf-section { margin-bottom: 14pt; page-break-inside: avoid; }
+    #pdf-report .pdf-section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.07em; color: #444; border-bottom: 0.5pt solid #aaa; padding-bottom: 3pt; margin-bottom: 7pt; }
+    #pdf-report table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    #pdf-report table th { font-size: 8pt; font-weight: 600; text-align: left; padding: 4pt 5pt; border-bottom: 1pt solid #888; background: #f4f4f4 !important; }
+    #pdf-report table th.r, #pdf-report table td.r { text-align: right; }
+    #pdf-report table td { padding: 3.5pt 5pt; border-bottom: 0.4pt solid #e0e0e0; }
+    #pdf-report table tr.subtotal td { background: #f9f9f9 !important; font-weight: 600; font-size: 8.5pt; color: #555; }
+    #pdf-report table tr.grand-total td { font-weight: bold; border-top: 1pt solid #000; border-bottom: 2pt solid #000; }
+    #pdf-report .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7pt; }
+    #pdf-report .kpi { border: 0.5pt solid #ccc; border-radius: 3pt; padding: 7pt 8pt; }
+    #pdf-report .kpi.main { border: 1.5pt solid #1a1a1a; }
+    #pdf-report .kpi-label { font-size: 7pt; color: #666; margin-bottom: 2pt; }
+    #pdf-report .kpi-value { font-size: 16pt; font-weight: bold; }
+    #pdf-report .kpi-sub { font-size: 7pt; color: #888; margin-top: 1pt; }
+    #pdf-report .cf-table { width: 100%; font-size: 10pt; border-collapse: collapse; }
+    #pdf-report .cf-table td { padding: 2.5pt 0; }
+    #pdf-report .cf-table td:last-child { text-align: right; font-weight: 600; }
+    #pdf-report .cf-table tr.cf-total td { border-top: 1pt solid #000; padding-top: 4pt; font-weight: bold; font-size: 11pt; }
+    #pdf-report .formula-box { border: 0.4pt solid #ccc; border-radius: 2pt; padding: 6pt 8pt; font-size: 7.5pt; color: #555; line-height: 1.9; }
+    #pdf-report .pdf-footer { margin-top: 16pt; padding-top: 6pt; border-top: 0.5pt solid #ccc; font-size: 7.5pt; color: #888; display: flex; justify-content: space-between; }
+    @page { margin: 14mm 12mm; size: A4; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📊 包租物件投報率試算</h1>
+
+  <!-- 物件存檔列 -->
+  <div class="save-bar">
+    <div class="save-row">
+      <label for="propName">物件名稱</label>
+      <input type="text" id="propName" class="grow" placeholder="例如：大安區四維路">
+      <button class="btn btn-primary" onclick="saveProp()">存檔</button>
+      <button class="btn" onclick="newProp()">＋ 新物件</button>
+    </div>
+    <div class="save-row">
+      <label for="propList">已存的物件</label>
+      <select id="propList" class="grow" onchange="openProp(this.value)"></select>
+      <button class="btn btn-danger" onclick="deleteProp()">刪除這間</button>
+    </div>
+    <div class="save-row" style="justify-content:space-between">
+      <span class="save-status" id="saveStatus"></span>
+      <span>
+        <button class="btn btn-small" onclick="exportBackup()">下載備份檔</button>
+        <button class="btn btn-small" onclick="document.getElementById('backupFile').click()">從備份檔還原</button>
+        <input type="file" id="backupFile" accept=".json,application/json" style="display:none" onchange="importBackup(this)">
+      </span>
+    </div>
+    <div class="save-row">
+      <button class="btn" onclick="showCode()">🔗 產生代碼（分享給老師、同學）</button>
+      <button class="btn" onclick="openPaste()">📥 貼上代碼</button>
+    </div>
+    <div class="code-panel" id="codePanel" hidden>
+      <span class="code-label" id="codeLabel"></span>
+      <textarea id="codeOut" readonly></textarea>
+      <div class="save-row">
+        <button class="btn btn-primary" onclick="copyShare('link')">複製連結（推薦）</button>
+        <button class="btn" onclick="copyShare('code')">只複製代碼</button>
+        <button class="btn btn-small" onclick="document.getElementById('codePanel').hidden=true">關閉</button>
+        <span class="code-msg" id="codeMsg"></span>
+      </div>
+    </div>
+    <div class="code-panel" id="pastePanel" hidden>
+      <label class="code-label" for="pasteInput">把收到的代碼或連結整串貼在這裡（代碼開頭是 BZ-）</label>
+      <textarea id="pasteInput" placeholder="BZ-…"></textarea>
+      <div class="save-row">
+        <button class="btn btn-primary" onclick="loadPaste()">帶出試算</button>
+        <button class="btn btn-small" onclick="closePaste()">取消</button>
+        <span class="code-msg" id="pasteMsg"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-row">
+    <button class="tab active" onclick="switchTab(0)">成本明細</button>
+    <button class="tab" onclick="switchTab(1)">房間配置</button>
+    <button class="tab" onclick="switchTab(2)">合約參數</button>
+    <button class="tab" onclick="switchTab(3)">試算結果</button>
+    <button class="tab tab-export" onclick="switchTab(4)">↓ 匯出 PDF</button>
+  </div>
+
+  <!-- TAB 0: 成本明細 -->
+  <div id="tab0">
+    <div class="section">
+      <h3>簽約費用</h3>
+      <div class="field rent-field">
+        <label>月租金（每月付房東的大租金）</label>
+        <div class="input-wrap"><input type="number" data-param="bigRent" min="0" step="500"><span>元/月</span></div>
+        <span class="hint">填好月租金，下面的押金、第一個月租金、房仲費會自動換算</span>
+      </div>
+      <div class="cost-header cost-cols"><span>項目</span><span class="r">單價</span><span class="r">數量</span><span class="r">小計</span><span></span></div>
+      <div id="cat0-auto"></div>
+      <div id="cat0"></div>
+      <button class="add-btn" onclick="addCostRow(0)">+ 新增項目</button>
+      <div class="spread-row" style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border)">
+        <span>簽約費用小計</span><span id="cat0-total" style="color:var(--text-info)">$0</span>
+      </div>
+    </div>
+    <div class="section">
+      <h3>硬裝工程</h3>
+      <div class="cost-header cost-cols"><span>項目</span><span class="r">單價</span><span class="r">數量</span><span class="r">小計</span><span></span></div>
+      <div id="cat1"></div>
+      <button class="add-btn" onclick="addCostRow(1)">+ 新增項目</button>
+      <div class="spread-row" style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border)">
+        <span>硬裝工程小計</span><span id="cat1-total" style="color:var(--text-info)">$0</span>
+      </div>
+    </div>
+    <div class="section">
+      <h3>軟裝工程</h3>
+      <div class="cost-header cost-cols"><span>項目</span><span class="r">單價</span><span class="r">數量</span><span class="r">小計</span><span></span></div>
+      <div id="cat2"></div>
+      <button class="add-btn" onclick="addCostRow(2)">+ 新增項目</button>
+      <div class="spread-row" style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border)">
+        <span>軟裝工程小計</span><span id="cat2-total" style="color:var(--text-info)">$0</span>
+      </div>
+    </div>
+    <div class="section">
+      <h3>家具 / 家電 / 雜支</h3>
+      <div class="cost-header cost-cols"><span>項目</span><span class="r">單價</span><span class="r">數量</span><span class="r">小計</span><span></span></div>
+      <div id="cat3"></div>
+      <button class="add-btn" onclick="addCostRow(3)">+ 新增項目</button>
+      <div class="spread-row" style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border)">
+        <span>家具家電雜支小計</span><span id="cat3-total" style="color:var(--text-info)">$0</span>
+      </div>
+    </div>
+    <div class="section" style="background:var(--bg2);">
+      <div class="spread-row"><span>押金＋第一個月租金</span><span id="sdep">$0</span></div>
+      <div class="spread-row"><span>公證費、房仲費＋裝修工程（不含押金、第一個月租金）</span><span id="s123">$0</span></div>
+      <hr class="sep">
+      <div class="spread-row total"><span>簽約當下要準備的錢（全部加起來）</span><span id="stotal">$0</span></div>
+    </div>
+  </div>
+
+  <!-- TAB 1: 房間配置 -->
+  <div id="tab1" style="display:none">
+    <div class="section">
+      <h3>各房間租金設定</h3>
+      <div class="room-header"><span>房號</span><span>房型說明</span><span>租金（元/月）</span><span></span></div>
+      <div id="rooms"></div>
+      <button class="add-btn" onclick="addRoom()">+ 新增房間</button>
+      <div class="total-bar"><span>月租金小計</span><strong id="rent-total">$0 / 月</strong></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: 合約參數 -->
+  <div id="tab2" style="display:none">
+    <div class="section">
+      <h3>合約條件</h3>
+      <div class="grid2" style="margin-bottom:12px">
+        <div class="field"><label>月租金（大租金，未稅）</label><div class="input-wrap"><input type="number" id="bigRent" data-param="bigRent" min="0" step="500"><span>元/月</span></div></div>
+        <div class="field"><label>租期</label><div class="input-wrap"><input type="number" id="leaseTerm" data-param="leaseTerm" min="1" step="1"><span>年</span></div></div>
+        <div class="field"><label>押金月數</label><div class="input-wrap"><input type="number" id="depositMonths" data-param="depositMonths" min="0" step="1"><span>個月</span></div><span class="hint">押金 = 大租金 × 押金月數，租約到期退回</span></div>
+        <div class="field"><label>第一個月租金（簽約時先付）</label><div class="input-wrap"><input type="number" id="prepayMonths" data-param="prepayMonths" min="0" step="1"><span>個月</span></div><span class="hint">押二付一就填 1</span></div>
+        <div class="field"><label>招租空窗期</label><div class="input-wrap"><input type="number" id="vacancy" data-param="vacancy" min="1" step="0.5"><span>個月/年</span></div></div>
+      </div>
+    </div>
+    <div class="section">
+      <h3>每月固定支出</h3>
+      <div class="grid2">
+        <div class="field"><label>管理費（社區）</label><div class="input-wrap"><input type="number" id="mgmt" data-param="mgmt" min="0" step="100"><span>元/月</span></div></div>
+        <div class="field"><label>房東稅金代扣</label><div class="input-wrap"><input type="number" id="tax" data-param="tax" min="0" step="100"><span>元/月</span></div></div>
+        <div class="field"><label>保險費</label><div class="input-wrap"><input type="number" id="insurance" data-param="insurance" min="0" step="100"><span>元/月</span></div></div>
+        <div class="field"><label>清潔費</label><div class="input-wrap"><input type="number" id="cleaning" data-param="cleaning" min="0" step="100"><span>元/月</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: 試算結果 -->
+  <div id="tab3" style="display:none"><div id="results-content"></div></div>
+
+  <!-- TAB 4: 匯出 PDF -->
+  <div id="tab4" style="display:none">
+    <div class="export-box">
+      <span class="export-icon">📄</span>
+      <p class="export-desc">將所有試算資料（成本明細、房間配置、合約條件、投報率結果）輸出成完整的 PDF 報告，可儲存歸檔或分享給房東。</p>
+      <div class="filename-field">
+        <label>檔案名稱</label>
+        <input type="text" id="pdfFilename" placeholder="沒填就用物件名稱">
+        <span>.pdf</span>
+      </div>
+      <button class="export-btn" onclick="exportPDF()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5v8M5 6.5L8 10l3-3.5M2 13h12" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        產生並下載 PDF
+      </button>
+    </div>
+    <div class="export-hints">
+      <h3>操作說明</h3>
+      <ol>
+        <li>在上方輸入<strong>檔案名稱</strong>（沒填就用物件名稱）</li>
+        <li>點擊<strong>「產生並下載 PDF」</strong>按鈕</li>
+        <li>瀏覽器會開啟<strong>列印對話框</strong></li>
+        <li>目標印表機請選擇<strong>「另存為 PDF」</strong>（Mac）或<strong>「Microsoft Print to PDF」</strong>（Windows）</li>
+        <li>確認版面設定為 <strong>A4、直向</strong>，點擊<strong>儲存</strong>完成</li>
+      </ol>
+    </div>
+  </div>
+
+  <div id="pdf-report" style="display:none"></div>
+  <footer>珍賞生活設計 · 包租物件試算工具</footer>
+</div>
+
+<script>
+const categories = ['cat0','cat1','cat2','cat3'];
+const catNames = ['簽約費用','硬裝工程','軟裝工程','家具／家電／雜支'];
+const STORE_KEY = 'baozu-calc-v2'; // 2026-11-07 改 v2：硬裝工程加 6 列，舊版存檔（v1）不再讀取，但沒刪
+
+const DEFAULT_STATE = {
+  name: '',
+  costs: [
+    [],
+    [{name:'輕隔間',unitPrice:28000,qty:1},{name:'水電',unitPrice:15000,qty:1},{name:'冷氣',unitPrice:20000,qty:3},{name:'地板',unitPrice:35000,qty:1},{name:'清運',unitPrice:15000,qty:0},{name:'浴室洗手台',unitPrice:7000,qty:0},{name:'馬桶',unitPrice:12000,qty:0},{name:'熱水器',unitPrice:7000,qty:0},{name:'瓦斯爐',unitPrice:4000,qty:0},{name:'抽油煙機',unitPrice:4000,qty:0}],
+    [{name:'油漆',unitPrice:30000,qty:1},{name:'燈具',unitPrice:2000,qty:4},{name:'窗簾',unitPrice:3000,qty:4},{name:'細清',unitPrice:13000,qty:1}],
+    [{name:'家具',unitPrice:70000,qty:1},{name:'軟裝佈置',unitPrice:3000,qty:1},{name:'冰箱',unitPrice:15000,qty:1},{name:'洗衣機',unitPrice:7000,qty:1},{name:'網路',unitPrice:5100,qty:1},{name:'打鑰匙換鎖',unitPrice:8000,qty:1}]
+  ],
+  rooms: [{label:'A',type:'大雅房',rent:16000},{label:'B',type:'套房',rent:20000},{label:'C',type:'雅房',rent:14000},{label:'D',type:'雅房',rent:13000},{label:'E',type:'小雅房',rent:11000}],
+  params: {bigRent:40000,depositMonths:2,prepayMonths:1,notaryFee:3750,notaryQty:1,agentMonths:0.5,leaseTerm:5,vacancy:1,mgmt:1500,tax:0,insurance:500,cleaning:300}
+};
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+let state = clone(DEFAULT_STATE);
+let costs = state.costs, rooms = state.rooms;
+let activeTab = 0;
+
+/* ---------- 小工具 ---------- */
+function fmt(n) { return Math.round(n).toLocaleString('zh-TW'); }
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function num(v, def) { return (v === '' || v === null || v === undefined || isNaN(+v)) ? def : +v; }
+function rowTotal(r) { return r.unitPrice * r.qty; }
+function catTotal(ci) { return costs[ci].reduce((s,r)=>s+rowTotal(r),0); }
+function totalRent() { return rooms.reduce((s,r)=>s+r.rent,0); }
+
+function params() {
+  const p = state.params;
+  return {
+    bigRent: num(p.bigRent, 0),
+    depositMonths: num(p.depositMonths, 0),
+    prepayMonths: num(p.prepayMonths, 0),
+    notaryFee: num(p.notaryFee, 0), notaryQty: num(p.notaryQty, 0),
+    agentMonths: num(p.agentMonths, 0),
+    leaseTerm: num(p.leaseTerm, 5) || 5,
+    vacancy: num(p.vacancy, 1),
+    mgmt: num(p.mgmt, 0), tax: num(p.tax, 0),
+    insurance: num(p.insurance, 0), cleaning: num(p.cleaning, 0)
+  };
+}
+function depositTotal() { const p = params(); return p.bigRent * p.depositMonths; }
+function prepayTotal() { const p = params(); return p.bigRent * p.prepayMonths; }
+function notaryTotal() { const p = params(); return p.notaryFee * p.notaryQty; }
+function agentTotal() { const p = params(); return p.bigRent * p.agentMonths; }
+// 簽約時付出、但不是成本的錢：押金（會退回）＋第一個月租金（已算在每月價差裡）
+function depPreTotal() { return depositTotal() + prepayTotal(); }
+// 簽約時付出、算成本的錢：公證費＋房仲費＋自己加的項目
+function signCost() { return notaryTotal() + agentTotal() + catTotal(0); }
+
+/* ---------- 成本明細 ---------- */
+// 簽約費用固定四列：押金、第一個月租金、公證費、房仲費（只建一次，之後只更新數字，打字才不會被打斷）
+function renderAutoRows() {
+  const autoTag = '<span class="auto-tag">跟著月租金</span>';
+  const qtyInput = (key, step) => `<input type="number" data-param="${key}" min="0" step="${step}" style="text-align:right">`;
+  document.getElementById('cat0-auto').innerHTML = `
+    <div class="cost-row cost-cols">
+      <div class="auto-name">押金 ${autoTag}</div>
+      <div class="auto-cell" data-rent></div>
+      ${qtyInput('depositMonths', 1)}
+      <div class="subtotal-cell" id="sub-dep"></div><span></span>
+    </div>
+    <div class="cost-row cost-cols">
+      <div class="auto-name">第一個月租金 ${autoTag}</div>
+      <div class="auto-cell" data-rent></div>
+      ${qtyInput('prepayMonths', 1)}
+      <div class="subtotal-cell" id="sub-pre"></div><span></span>
+    </div>
+    <div class="cost-row cost-cols">
+      <div class="auto-name">公證費</div>
+      <input type="number" data-param="notaryFee" min="0" step="250" style="text-align:right">
+      ${qtyInput('notaryQty', 1)}
+      <div class="subtotal-cell" id="sub-notary"></div><span></span>
+    </div>
+    <div class="cost-row cost-cols">
+      <div class="auto-name">房仲費 ${autoTag}</div>
+      <div class="auto-cell" data-rent></div>
+      ${qtyInput('agentMonths', 0.5)}
+      <div class="subtotal-cell" id="sub-agent"></div><span></span>
+    </div>`;
+  bindParams(document.getElementById('cat0-auto'));
+}
+
+function updateAutoRows() {
+  const p = params();
+  document.querySelectorAll('[data-rent]').forEach(el => el.textContent = '$' + fmt(p.bigRent));
+  document.getElementById('sub-dep').textContent = '$' + fmt(depositTotal());
+  document.getElementById('sub-pre').textContent = '$' + fmt(prepayTotal());
+  document.getElementById('sub-notary').textContent = '$' + fmt(notaryTotal());
+  document.getElementById('sub-agent').textContent = '$' + fmt(agentTotal());
+}
+
+// 同一個數字可能出現在兩個地方（例如月租金在第一頁和合約參數頁都有），一邊改、另一邊跟著變
+function bindParams(root) {
+  root.querySelectorAll('[data-param]').forEach(el => {
+    el.addEventListener('input', () => { state.params[el.dataset.param] = el.value; changed(); });
+  });
+}
+function syncParamInputs() {
+  document.querySelectorAll('[data-param]').forEach(el => {
+    if (el !== document.activeElement) el.value = state.params[el.dataset.param] ?? '';
+  });
+}
+
+function renderCosts() {
+  costs.forEach((cat,ci) => {
+    document.getElementById(categories[ci]).innerHTML = cat.map((row,ri) => `
+      <div class="cost-row cost-cols">
+        <input type="text" value="${esc(row.name)}" oninput="costs[${ci}][${ri}].name=this.value;changed()">
+        <input type="number" value="${row.unitPrice}" min="0" step="500"
+          oninput="costs[${ci}][${ri}].unitPrice=+this.value;updateSubtotal(${ci},${ri});changed()">
+        <input type="number" value="${row.qty}" min="0" step="0.5"
+          oninput="costs[${ci}][${ri}].qty=+this.value;updateSubtotal(${ci},${ri});changed()">
+        <div class="subtotal-cell" id="sub-${ci}-${ri}">$${fmt(rowTotal(row))}</div>
+        <button class="remove-btn" title="刪除這一列" onclick="costs[${ci}].splice(${ri},1);renderCosts();changed()">✕</button>
+      </div>`).join('');
+  });
+  updateTotals();
+}
+
+function updateSubtotal(ci,ri) {
+  const el = document.getElementById('sub-'+ci+'-'+ri);
+  if (el) el.textContent = '$'+fmt(rowTotal(costs[ci][ri]));
+}
+
+function addCostRow(ci) {
+  costs[ci].push({name:'新項目',unitPrice:0,qty:1});
+  renderCosts();
+  changed();
+}
+
+function updateTotals() {
+  updateAutoRows();
+  const dp = depPreTotal();
+  [0,1,2,3].forEach(ci => {
+    const t = ci === 0 ? dp + signCost() : catTotal(ci);
+    document.getElementById('cat'+ci+'-total').textContent = '$'+fmt(t);
+  });
+  const reno = signCost()+catTotal(1)+catTotal(2)+catTotal(3);
+  document.getElementById('sdep').textContent = '$'+fmt(dp);
+  document.getElementById('s123').textContent = '$'+fmt(reno);
+  document.getElementById('stotal').textContent = '$'+fmt(reno + dp);
+}
+
+/* ---------- 房間 ---------- */
+function renderRooms() {
+  document.getElementById('rooms').innerHTML = rooms.map((r,i) => `
+    <div class="room-row">
+      <input type="text" value="${esc(r.label)}" oninput="rooms[${i}].label=this.value;changed()">
+      <input type="text" value="${esc(r.type)}" oninput="rooms[${i}].type=this.value;changed()">
+      <input type="number" value="${r.rent}" min="0" step="500" oninput="rooms[${i}].rent=+this.value;changed()">
+      <button class="remove-btn" title="刪除這間房" onclick="rooms.splice(${i},1);renderRooms();changed()">✕</button>
+    </div>`).join('');
+  updateRentTotal();
+}
+function addRoom() { rooms.push({label:String.fromCharCode(65+rooms.length),type:'雅房',rent:12000}); renderRooms(); changed(); }
+function updateRentTotal() { document.getElementById('rent-total').textContent='$'+fmt(totalRent())+' / 月'; }
+
+/* ---------- 計算 ---------- */
+function calcAll() {
+  const p = params(), ri = totalRent();
+  const reno = signCost()+catTotal(1)+catTotal(2)+catTotal(3); // 公證費、房仲費＋裝修，不含押金、第一個月租金（跟原版算法一樣）
+  const dep = depositTotal(), pre = prepayTotal(), cap = reno + dep + pre;
+  const mc = p.mgmt + p.tax + p.insurance + p.cleaning;
+  const ms = ri - p.bigRent - mc;
+  const an = ms * (12 - p.vacancy);
+  const be = reno > 0 && an > 0 ? reno / an : 0;
+  const tnp = an * p.leaseTerm - reno;
+  const troi = reno > 0 ? tnp / reno : 0;
+  const aroi = p.leaseTerm > 0 ? troi / p.leaseTerm : 0;
+  return {p,ri,reno,dep,pre,cap,mc,ms,an,be,tnp,troi,aroi};
+}
+
+function renderResults() {
+  const {p,ri,reno,dep,pre,cap,mc,ms,an,be,tnp,troi,aroi} = calcAll();
+  const roiBadge = aroi>=0.25?'<span class="badge badge-g">優質</span>':aroi>=0.15?'<span class="badge badge-w">普通</span>':'<span class="badge badge-r">偏低</span>';
+  document.getElementById('results-content').innerHTML = `
+  <div class="section"><h3>月現金流分析</h3>
+    <div class="spread-row"><span>月租金收入（各房小計）</span><span>+$${fmt(ri)}</span></div>
+    <div class="spread-row neg"><span>大租金（每月付房東）</span><span>−$${fmt(p.bigRent)}</span></div>
+    <div class="spread-row neg"><span>月固定支出（管理/稅/保險/清潔）</span><span>−$${fmt(mc)}</span></div>
+    <hr class="sep">
+    <div class="spread-row total"><span>月價差（純利）</span><span style="${ms<0?'color:var(--text-danger)':''}">$${fmt(ms)} / 月</span></div>
+    <div class="spread-row" style="margin-top:4px"><span>年實收（扣除 ${p.vacancy} 月空窗）</span><span>$${fmt(an)} / 年</span></div>
+  </div>
+  <div class="section"><h3>資金需求（簽約當下要準備的錢）</h3>
+    <div class="spread-row"><span>公證費、房仲費＋裝修成本（不含押金、第一個月租金）</span><span>$${fmt(reno)}</span></div>
+    <div class="spread-row"><span>押金（${p.depositMonths} 個月 × $${fmt(p.bigRent)}，租約到期退回）</span><span>$${fmt(dep)}</span></div>
+    <div class="spread-row"><span>第一個月租金（${p.prepayMonths} 個月 × $${fmt(p.bigRent)}）</span><span>$${fmt(pre)}</span></div>
+    <hr class="sep">
+    <div class="spread-row total"><span>總資金需求</span><span>$${fmt(cap)}</span></div>
+  </div>
+  <div class="section"><h3>投報率總覽</h3>
+    <div class="result-grid">
+      <div class="metric highlight"><div class="label">年投報率 ${roiBadge}</div><div class="value">${(aroi*100).toFixed(1)}%</div><div class="sub">以公證費、房仲費＋裝修成本計算</div></div>
+      <div class="metric"><div class="label">回本時間</div><div class="value">${be>0?be.toFixed(1)+'年':'—'}</div><div class="sub">${be>0?fmt(be*12)+' 個月':'收入未覆蓋成本'}</div></div>
+      <div class="metric"><div class="label">總投報率（${p.leaseTerm}年）</div><div class="value">${(troi*100).toFixed(0)}%</div><div class="sub">Total ROI</div></div>
+      <div class="metric"><div class="label">租期總淨利</div><div class="value" style="${tnp<0?'color:var(--text-danger)':''}">$${fmt(tnp)}</div><div class="sub">扣除公證費、房仲費＋裝修成本後</div></div>
+    </div>
+    <div class="note" style="margin-top:12px"><strong>計算邏輯</strong><br>
+      月價差 = 各房租金小計 − 大租金 − 月固定支出<br>
+      年實收 = 月價差 × (12 − 空窗月數)<br>
+      成本 = 公證費、房仲費＋裝修（押金會退回、第一個月租金已算在月價差裡，所以都不算成本）<br>
+      回本時間 = 成本 ÷ 年實收<br>
+      總淨利 = 年實收 × 租期 − 成本<br>
+      年投報率 = 總投報率 ÷ 租期</div>
+  </div>`;
+}
+
+/* ---------- 有變動時 ---------- */
+function changed() {
+  syncParamInputs();
+  updateTotals();
+  updateRentTotal();
+  if (activeTab === 3) renderResults();
+  saveDraft();
+  updateStatus();
+}
+
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,idx)=>t.classList.toggle('active',idx===i));
+  ['tab0','tab1','tab2','tab3','tab4'].forEach((id,idx)=>{document.getElementById(id).style.display=idx===i?'':'none';});
+  activeTab = i;
+  if (i === 3) renderResults();
+}
+
+renderAutoRows();
+bindParams(document.getElementById('tab0').querySelector('.rent-field'));
+bindParams(document.getElementById('tab2'));
+document.getElementById('propName').addEventListener('input', e => { state.name = e.target.value; saveDraft(); updateStatus(); });
+
+/* ---------- 存檔（存在這台電腦的瀏覽器裡） ---------- */
+function readStore() {
+  try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && s.props) return s; } catch(e) {}
+  return { props: {}, current: '', draft: null };
+}
+function writeStore(s) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); return true; } catch(e) { return false; }
+}
+function snapshot() { return { name: state.name, costs: clone(costs), rooms: clone(rooms), params: clone(state.params) }; }
+function comparable(o) { return JSON.stringify({c:o.costs, r:o.rooms, p:o.params}); }
+
+function loadState(data) {
+  const d = clone(data || DEFAULT_STATE);
+  state = {
+    name: d.name || '',
+    costs: d.costs || clone(DEFAULT_STATE.costs),
+    rooms: d.rooms || clone(DEFAULT_STATE.rooms),
+    params: Object.assign(clone(DEFAULT_STATE.params), d.params || {})
+  };
+  costs = state.costs; rooms = state.rooms;
+  syncParamInputs();
+  document.getElementById('propName').value = state.name;
+  renderCosts();
+  renderRooms();
+  if (activeTab === 3) renderResults();
+}
+
+function saveDraft() {
+  const s = readStore();
+  s.draft = snapshot();
+  writeStore(s);
+}
+
+function refreshList() {
+  const s = readStore();
+  const names = Object.keys(s.props).sort((a,b)=> (s.props[b].savedAt||'').localeCompare(s.props[a].savedAt||''));
+  const sel = document.getElementById('propList');
+  sel.innerHTML = `<option value="">${names.length ? '— 選一間打開 —' : '（還沒有存過物件）'}</option>` +
+    names.map(n => `<option value="${esc(n)}"${n===s.current?' selected':''}>${esc(n)}</option>`).join('');
+}
+
+function updateStatus() {
+  const s = readStore(), el = document.getElementById('saveStatus');
+  const saved = s.current && s.props[s.current];
+  if (!saved) {
+    el.className = 'save-status dirty';
+    el.textContent = '這間還沒存檔（填好物件名稱按「存檔」）';
+  } else if (comparable(saved) !== comparable(snapshot()) || state.name !== s.current) {
+    el.className = 'save-status dirty';
+    el.textContent = '有還沒存檔的修改';
+  } else {
+    el.className = 'save-status ok';
+    const t = new Date(saved.savedAt);
+    el.textContent = '已存檔：' + s.current + '（' + t.toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + '）';
+  }
+}
+
+function saveProp() {
+  const name = state.name.trim();
+  if (!name) { alert('請先填物件名稱，例如：大安區四維路'); document.getElementById('propName').focus(); return; }
+  const s = readStore();
+  if (s.props[name] && s.current !== name && !confirm('已經有一間叫「' + name + '」，要蓋掉它嗎？')) return;
+  s.props[name] = Object.assign(snapshot(), { name, savedAt: new Date().toISOString() });
+  s.current = name;
+  s.draft = snapshot();
+  if (!writeStore(s)) { alert('存檔失敗：這個瀏覽器不允許存資料（例如無痕視窗）。請改用「下載備份檔」。'); return; }
+  refreshList();
+  updateStatus();
+}
+
+function openProp(name) {
+  if (!name) return;
+  const s = readStore();
+  if (!s.props[name]) return;
+  const base = (s.current && s.props[s.current]) || DEFAULT_STATE;
+  const dirty = comparable(base) !== comparable(snapshot());
+  if (dirty && !confirm('目前畫面上的修改還沒存檔，確定要打開「' + name + '」嗎？')) { refreshList(); return; }
+  loadState(s.props[name]);
+  s.current = name;
+  s.draft = snapshot();
+  writeStore(s);
+  refreshList();
+  updateStatus();
+}
+
+function newProp() {
+  if (!confirm('要開一間新物件嗎？畫面會回到預設數字（已存檔的物件不受影響）。')) return;
+  loadState(DEFAULT_STATE);
+  const s = readStore();
+  s.current = '';
+  s.draft = snapshot();
+  writeStore(s);
+  refreshList();
+  updateStatus();
+  document.getElementById('propName').focus();
+}
+
+function deleteProp() {
+  const s = readStore(), name = document.getElementById('propList').value || s.current;
+  if (!name || !s.props[name]) { alert('先從「已存的物件」選一間要刪除的'); return; }
+  if (!confirm('確定要刪除「' + name + '」？刪了就救不回來（除非你有下載備份檔）。')) return;
+  delete s.props[name];
+  if (s.current === name) s.current = '';
+  writeStore(s);
+  refreshList();
+  updateStatus();
+}
+
+function exportBackup() {
+  const s = readStore();
+  const d = new Date(), pad = n => String(n).padStart(2,'0');
+  const fname = '包租試算備份_' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + '.json';
+  const blob = new Blob([JSON.stringify({ app: 'baozu-calc', version: 1, props: s.props }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function importBackup(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.props) throw new Error('格式不對');
+      const s = readStore();
+      const names = Object.keys(data.props);
+      const clash = names.filter(n => s.props[n]);
+      if (clash.length && !confirm('備份檔裡有 ' + clash.length + ' 間跟現在的同名（' + clash.slice(0,3).join('、') + (clash.length>3?'…':'') + '），要用備份檔的版本蓋掉嗎？\n按「取消」就只加入新的、同名的保留現在的版本。')) {
+        names.forEach(n => { if (!s.props[n]) s.props[n] = data.props[n]; });
+      } else {
+        names.forEach(n => { s.props[n] = data.props[n]; });
+      }
+      writeStore(s);
+      refreshList();
+      updateStatus();
+      alert('還原完成，共 ' + names.length + ' 間物件。從「已存的物件」選一間打開。');
+    } catch(e) {
+      alert('這個檔案讀不出來，請確認是從這個試算頁下載的備份檔。');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- PDF ---------- */
+function buildPDF() {
+  const {p,ri,reno,dep,pre,cap,mc,ms,an,be,tnp,troi,aroi} = calcAll();
+  const fn = esc(pdfName());
+  const today = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric'});
+  let costRows = '';
+  costRows += `<tr><td>${catNames[0]}</td><td>押金</td><td class="r">$${fmt(p.bigRent)}</td><td class="r">${p.depositMonths}</td><td class="r">$${fmt(dep)}</td></tr>`;
+  costRows += `<tr><td>${catNames[0]}</td><td>第一個月租金</td><td class="r">$${fmt(p.bigRent)}</td><td class="r">${p.prepayMonths}</td><td class="r">$${fmt(pre)}</td></tr>`;
+  costRows += `<tr><td>${catNames[0]}</td><td>公證費</td><td class="r">$${fmt(p.notaryFee)}</td><td class="r">${p.notaryQty}</td><td class="r">$${fmt(notaryTotal())}</td></tr>`;
+  costRows += `<tr><td>${catNames[0]}</td><td>房仲費</td><td class="r">$${fmt(p.bigRent)}</td><td class="r">${p.agentMonths}</td><td class="r">$${fmt(agentTotal())}</td></tr>`;
+  costs.forEach((cat,ci) => {
+    cat.forEach(r => {
+      costRows += `<tr><td>${catNames[ci]}</td><td>${esc(r.name)}</td><td class="r">$${fmt(r.unitPrice)}</td><td class="r">${r.qty}</td><td class="r">$${fmt(rowTotal(r))}</td></tr>`;
+    });
+    const t = ci === 0 ? dep + pre + signCost() : catTotal(ci);
+    costRows += `<tr class="subtotal"><td colspan="4">${catNames[ci]} 小計${ci===0?'（含押金、第一個月租金）':''}</td><td class="r">$${fmt(t)}</td></tr>`;
+  });
+  const roomRows = rooms.map(r=>`<tr><td>${esc(r.label)}</td><td>${esc(r.type)}</td><td class="r">$${fmt(r.rent)} / 月</td></tr>`).join('');
+  return `
+    <div class="pdf-title">${fn}</div>
+    <div class="pdf-subtitle">珍賞生活設計有限公司 · 包租物件投報率試算報告 · ${today}</div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">一、投報率關鍵指標</div>
+      <div class="kpi-grid">
+        <div class="kpi main"><div class="kpi-label">年投報率</div><div class="kpi-value">${(aroi*100).toFixed(1)}%</div><div class="kpi-sub">以公證費、房仲費＋裝修成本計算</div></div>
+        <div class="kpi"><div class="kpi-label">回本時間</div><div class="kpi-value">${be>0?be.toFixed(1)+'年':'—'}</div><div class="kpi-sub">${be>0?fmt(be*12)+' 個月':''}</div></div>
+        <div class="kpi"><div class="kpi-label">總投報率（${p.leaseTerm}年）</div><div class="kpi-value">${(troi*100).toFixed(0)}%</div><div class="kpi-sub">Total ROI</div></div>
+        <div class="kpi"><div class="kpi-label">租期總淨利</div><div class="kpi-value">$${fmt(tnp)}</div><div class="kpi-sub">扣除公證費、房仲費＋裝修成本後</div></div>
+      </div>
+    </div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">二、月現金流分析</div>
+      <table class="cf-table"><tbody>
+        <tr><td>月租金收入（各房小計）</td><td>+$${fmt(ri)}</td></tr>
+        <tr><td>大租金（每月付房東）</td><td>−$${fmt(p.bigRent)}</td></tr>
+        <tr><td>月固定支出（管理費 $${fmt(p.mgmt)} ／ 稅金 $${fmt(p.tax)} ／ 保險 $${fmt(p.insurance)} ／ 清潔 $${fmt(p.cleaning)}）</td><td>−$${fmt(mc)}</td></tr>
+        <tr class="cf-total"><td>月價差（純利）</td><td>$${fmt(ms)} / 月</td></tr>
+        <tr><td>年實收（扣除 ${p.vacancy} 月空窗）</td><td>$${fmt(an)} / 年</td></tr>
+      </tbody></table>
+    </div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">三、資金需求（簽約當下要準備的錢）</div>
+      <table class="cf-table"><tbody>
+        <tr><td>公證費、房仲費＋裝修成本（不含押金、第一個月租金）</td><td>$${fmt(reno)}</td></tr>
+        <tr><td>押金（${p.depositMonths} 個月 × $${fmt(p.bigRent)}，租約到期退回）</td><td>$${fmt(dep)}</td></tr>
+        <tr><td>第一個月租金（${p.prepayMonths} 個月 × $${fmt(p.bigRent)}）</td><td>$${fmt(pre)}</td></tr>
+        <tr class="cf-total"><td>總資金需求</td><td>$${fmt(cap)}</td></tr>
+      </tbody></table>
+    </div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">四、房間配置</div>
+      <table><thead><tr><th>房號</th><th>房型</th><th class="r">月租金</th></tr></thead><tbody>
+        ${roomRows}
+        <tr class="grand-total"><td colspan="2">合計</td><td class="r">$${fmt(ri)} / 月</td></tr>
+      </tbody></table>
+    </div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">五、成本明細</div>
+      <table><thead><tr><th>類別</th><th>項目</th><th class="r">單價</th><th class="r">數量</th><th class="r">小計</th></tr></thead><tbody>
+        ${costRows}
+        <tr class="grand-total"><td colspan="4">總計（含押金、第一個月租金）</td><td class="r">$${fmt(cap)}</td></tr>
+      </tbody></table>
+    </div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">六、合約條件</div>
+      <table class="cf-table"><tbody>
+        <tr><td>大租金（未稅）</td><td>$${fmt(p.bigRent)} / 月</td></tr>
+        <tr><td>租期</td><td>${p.leaseTerm} 年</td></tr>
+        <tr><td>押金月數</td><td>${p.depositMonths} 個月</td></tr>
+        <tr><td>簽約時先付租金</td><td>${p.prepayMonths} 個月</td></tr>
+        <tr><td>招租空窗期</td><td>${p.vacancy} 個月 / 年</td></tr>
+      </tbody></table>
+    </div>
+    <div class="pdf-section">
+      <div class="pdf-section-title">計算邏輯</div>
+      <div class="formula-box">月價差 = 各房租金小計 − 大租金 − 月固定支出　／　年實收 = 月價差 × (12 − 空窗月數)　／　成本 = 公證費、房仲費＋裝修（押金退回、第一個月租金已算在月價差，不算成本）　／　回本時間 = 成本 ÷ 年實收　／　總淨利 = 年實收 × 租期 − 成本　／　年投報率 = 總投報率 ÷ 租期</div>
+    </div>
+    <div class="pdf-footer"><span>珍賞生活設計有限公司 · 包租物件試算工具</span><span>${today}</span></div>`;
+}
+
+function pdfName() {
+  return document.getElementById('pdfFilename').value.trim() || state.name.trim() || '包租物件試算';
+}
+
+function exportPDF() {
+  const fn = pdfName();
+  document.getElementById('pdf-report').innerHTML = buildPDF();
+  const prev = document.title;
+  document.title = fn;
+  window.print();
+  setTimeout(()=>{document.title=prev;},3000);
+}
+
+/* ---------- 分享代碼：BZ-資料（整份試算壓縮成一串字，不經過任何伺服器） ---------- */
+const b64e = bytes => { let s = ''; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
+const b64d = str => { str = str.replace(/-/g,'+').replace(/_/g,'/'); while (str.length % 4) str += '='; const s = atob(str); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+async function pipeBytes(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+function todayStr() { const d = new Date(), pad = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+
+async function encodeShare() {
+  const obj = { v: 1, n: state.name.trim(), d: todayStr(), c: costs, r: rooms, p: state.params };
+  let bytes = new TextEncoder().encode(JSON.stringify(obj)), flag = 'j';
+  if (window.CompressionStream) { try { bytes = await pipeBytes(bytes, new CompressionStream('deflate-raw')); flag = 'z'; } catch(e) {} }
+  return 'BZ-' + flag + b64e(bytes);
+}
+async function decodeShare(raw) {
+  const m = String(raw).replace(/\s+/g,'').match(/BZ-([zj])([A-Za-z0-9_-]+)/);
+  if (!m) throw new Error('format');
+  let bytes = b64d(m[2]);
+  if (m[1] === 'z') {
+    if (!window.DecompressionStream) throw new Error('browser');
+    bytes = await pipeBytes(bytes, new DecompressionStream('deflate-raw'));
+  }
+  const obj = JSON.parse(new TextDecoder().decode(bytes));
+  if (!Array.isArray(obj.c) || obj.c.length !== 4 || !Array.isArray(obj.r) || !obj.p) throw new Error('format');
+  return obj;
+}
+function shareLink(code) { return location.href.split('#')[0] + '#c=' + code; }
+
+let lastCode = '';
+async function showCode() {
+  lastCode = await encodeShare();
+  document.getElementById('codeLabel').textContent = '代碼｜' + (state.name.trim() || '未命名物件') + '｜' + todayStr() + '（之後改了數字，要重新產生一次）';
+  document.getElementById('codeOut').value = lastCode;
+  document.getElementById('codeMsg').textContent = '';
+  document.getElementById('pastePanel').hidden = true;
+  document.getElementById('codePanel').hidden = false;
+}
+function copyShare(kind) {
+  const text = kind === 'link' ? shareLink(lastCode) : lastCode;
+  const msg = document.getElementById('codeMsg');
+  const ok = () => { msg.textContent = kind === 'link' ? '連結已複製，貼到 LINE 給老師，點開就看得到' : '代碼已複製，老師在這個網頁按「貼上代碼」貼上就好'; };
+  const fallback = () => { const box = document.getElementById('codeOut'); box.value = text; box.focus(); box.select(); msg.textContent = '已選取，請按 ⌘C（或 Ctrl+C）複製'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fallback);
+  else fallback();
+}
+function openPaste() {
+  document.getElementById('codePanel').hidden = true;
+  document.getElementById('pastePanel').hidden = false;
+  const msg = document.getElementById('pasteMsg'); msg.textContent = ''; msg.classList.remove('err');
+  document.getElementById('pasteInput').focus();
+}
+function closePaste() { document.getElementById('pastePanel').hidden = true; document.getElementById('pasteInput').value = ''; }
+function shareError(e) { return e && e.message === 'browser' ? '這個瀏覽器版本太舊，請改用最新版 Chrome 或 Safari 開啟' : '這串代碼不完整，請確認整串都有複製到（開頭是 BZ-）'; }
+
+// 把代碼的內容放到畫面上：當成一間還沒存檔的物件，看的人自己存過的物件不會被動到
+function applyShare(obj) {
+  const s = readStore();
+  const base = (s.current && s.props[s.current]) || DEFAULT_STATE;
+  if (comparable(base) !== comparable(snapshot()) &&
+      !confirm('畫面上有還沒存檔的修改，帶出代碼的試算會取代畫面上的內容（已存檔的物件不受影響），確定嗎？')) return false;
+  loadState({ name: obj.n || '', costs: obj.c, rooms: obj.r, params: obj.p });
+  s.current = '';
+  s.draft = snapshot();
+  writeStore(s);
+  refreshList();
+  updateStatus();
+  const st = document.getElementById('saveStatus');
+  st.className = 'save-status ok';
+  st.textContent = '已帶出「' + (obj.n || '未命名物件') + '」的試算（' + (obj.d || '') + ' 產生）。要留著就按「存檔」';
+  switchTab(3);
+  return true;
+}
+async function loadPaste() {
+  const msg = document.getElementById('pasteMsg'); msg.classList.remove('err');
+  try {
+    const obj = await decodeShare(document.getElementById('pasteInput').value);
+    if (applyShare(obj)) closePaste();
+  } catch(e) { msg.classList.add('err'); msg.textContent = shareError(e); }
+}
+async function loadFromLink() {
+  const m = location.hash.match(/^#c=(.+)$/);
+  if (!m) return;
+  try { applyShare(await decodeShare(decodeURIComponent(m[1]))); }
+  catch(e) { alert('這個連結' + shareError(e).replace('這串', '裡的')); }
+  try { history.replaceState(null, '', location.href.split('#')[0]); } catch(e) {}
+}
+
+/* ---------- 開啟時：回到上次的畫面 ---------- */
+(function init() {
+  const s = readStore();
+  loadState(s.draft || (s.current && s.props[s.current]) || DEFAULT_STATE);
+  refreshList();
+  updateStatus();
+  loadFromLink();
+  window.addEventListener('hashchange', loadFromLink); // 頁面開著時又點了另一條連結
+})();
+</script>
+</body>
+</html>
