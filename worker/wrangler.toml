@@ -1,0 +1,12 @@
+name = "rent-roi-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# 每天台灣時間 04:00（UTC 20:00）清掉超過 60 天的短代碼
+[triggers]
+crons = ["0 20 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rent-roi-db"
+database_id = "3be829bb-98d3-4cfe-bdca-ae559a5b3e93"

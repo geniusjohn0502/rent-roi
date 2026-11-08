@@ -76,6 +76,7 @@
   .code-panel { margin-top: 10px; padding: 12px; border-radius: var(--radius); background: var(--bg-info); }
   .code-panel[hidden] { display: none; }
   .code-panel .code-label { font-size: 12px; color: var(--text-info); font-weight: 500; margin-bottom: 6px; display: block; }
+  .code-panel textarea.short { min-height: 0; height: 48px; font-size: 22px; font-weight: 600; letter-spacing: 0.2em; text-align: center; resize: none; }
   .code-panel textarea { width: 100%; min-height: 72px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: var(--radius); border: 0.5px solid var(--border); background: var(--bg); color: var(--text); word-break: break-all; outline: none; }
   .code-panel .save-row { margin-top: 8px; }
   .code-msg { font-size: 12px; color: var(--text-success); }
@@ -226,8 +227,8 @@
       </div>
     </div>
     <div class="code-panel" id="pastePanel" hidden>
-      <label class="code-label" for="pasteInput">把收到的代碼或連結整串貼在這裡（代碼開頭是 BZ-）</label>
-      <textarea id="pasteInput" placeholder="BZ-…"></textarea>
+      <label class="code-label" for="pasteInput">把收到的代碼或連結貼在這裡（6 個字的代碼，例如 K7Q3MP）</label>
+      <textarea id="pasteInput" placeholder="K7Q3MP 或 https://…"></textarea>
       <div class="save-row">
         <button class="btn btn-primary" onclick="loadPaste()">帶出試算</button>
         <button class="btn btn-small" onclick="closePaste()">取消</button>
@@ -865,17 +866,56 @@ async function decodeShare(raw) {
 }
 function shareLink(code) { return location.href.split('#')[0] + '#c=' + code; }
 
-let lastCode = '';
+/* ---------- 短代碼：長代碼存到 Cloudflare 小倉庫，換一組 6 個字，60 天後自動清掉 ---------- */
+const SHORT_API = 'https://rent-roi-api.line-checkin-bot.workers.dev';
+async function makeShort(longCode) {
+  const res = await fetch(SHORT_API + '/s', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: longCode });
+  if (!res.ok) throw new Error('api');
+  return (await res.json()).id;
+}
+async function fetchShort(id) {
+  let res;
+  try { res = await fetch(SHORT_API + '/s/' + id.toUpperCase()); } catch(e) { throw new Error('network'); }
+  if (res.status === 404) throw new Error('notfound');
+  if (!res.ok) throw new Error('network');
+  return (await res.json()).code;
+}
+// 從貼上的文字找出代碼：長代碼 BZ-…、連結 #K7Q3MP、或單獨 6 個字
+function findShortId(raw) {
+  const t = String(raw).trim();
+  const m = t.match(/#([A-Za-z0-9]{6})(?![A-Za-z0-9])/) || t.match(/^([A-Za-z0-9]{6})$/);
+  return m ? m[1].toUpperCase() : '';
+}
+async function decodeAny(raw) {
+  if (/BZ-[zj]/.test(raw)) return decodeShare(raw);
+  const id = findShortId(raw);
+  if (!id) throw new Error('format');
+  return decodeShare(await fetchShort(id));
+}
+
+let lastCode = '', lastShort = '';
 async function showCode() {
   lastCode = await encodeShare();
-  document.getElementById('codeLabel').textContent = '代碼｜' + (state.name.trim() || '未命名物件') + '｜' + todayStr() + '（之後改了數字，要重新產生一次）';
-  document.getElementById('codeOut').value = lastCode;
-  document.getElementById('codeMsg').textContent = '';
+  lastShort = '';
+  const out = document.getElementById('codeOut'), msg = document.getElementById('codeMsg');
+  const who = (state.name.trim() || '未命名物件') + '｜' + todayStr();
+  msg.textContent = '產生中…';
   document.getElementById('pastePanel').hidden = true;
   document.getElementById('codePanel').hidden = false;
+  try {
+    lastShort = await makeShort(lastCode);
+    document.getElementById('codeLabel').textContent = '代碼｜' + who + '（60 天內有效；之後改了數字，要重新產生一次）';
+    out.value = lastShort; out.classList.add('short');
+    msg.textContent = '';
+  } catch(e) {
+    document.getElementById('codeLabel').textContent = '代碼｜' + who + '（之後改了數字，要重新產生一次）';
+    out.value = lastCode; out.classList.remove('short');
+    msg.textContent = '短代碼暫時產生不了（可能沒網路），先用這組長代碼，一樣能用';
+  }
 }
 function copyShare(kind) {
-  const text = kind === 'link' ? shareLink(lastCode) : lastCode;
+  const base = location.href.split('#')[0];
+  const text = kind === 'link' ? (lastShort ? base + '#' + lastShort : shareLink(lastCode)) : (lastShort || lastCode);
   const msg = document.getElementById('codeMsg');
   const ok = () => { msg.textContent = kind === 'link' ? '連結已複製，貼到 LINE 給老師，點開就看得到' : '代碼已複製，老師在這個網頁按「貼上代碼」貼上就好'; };
   const fallback = () => { const box = document.getElementById('codeOut'); box.value = text; box.focus(); box.select(); msg.textContent = '已選取，請按 ⌘C（或 Ctrl+C）複製'; };
@@ -889,7 +929,13 @@ function openPaste() {
   document.getElementById('pasteInput').focus();
 }
 function closePaste() { document.getElementById('pastePanel').hidden = true; document.getElementById('pasteInput').value = ''; }
-function shareError(e) { return e && e.message === 'browser' ? '這個瀏覽器版本太舊，請改用最新版 Chrome 或 Safari 開啟' : '這串代碼不完整，請確認整串都有複製到（開頭是 BZ-）'; }
+function shareError(e) {
+  const k = e && e.message;
+  if (k === 'browser') return '這個瀏覽器版本太舊，請改用最新版 Chrome 或 Safari 開啟';
+  if (k === 'notfound') return '找不到這組代碼：可能打錯字，或已經超過 60 天被清掉了';
+  if (k === 'network') return '連不上代碼倉庫，請確認有網路再試一次';
+  return '看不懂這組代碼，請確認是 6 個字的代碼，或整條連結都有複製到';
+}
 
 // 把代碼的內容放到畫面上：當成一間還沒存檔的物件，看的人自己存過的物件不會被動到
 function applyShare(obj) {
@@ -912,15 +958,16 @@ function applyShare(obj) {
 async function loadPaste() {
   const msg = document.getElementById('pasteMsg'); msg.classList.remove('err');
   try {
-    const obj = await decodeShare(document.getElementById('pasteInput').value);
+    msg.textContent = '讀取中…';
+    const obj = await decodeAny(document.getElementById('pasteInput').value);
     if (applyShare(obj)) closePaste();
   } catch(e) { msg.classList.add('err'); msg.textContent = shareError(e); }
 }
 async function loadFromLink() {
-  const m = location.hash.match(/^#c=(.+)$/);
-  if (!m) return;
-  try { applyShare(await decodeShare(decodeURIComponent(m[1]))); }
-  catch(e) { alert('這個連結' + shareError(e).replace('這串', '裡的')); }
+  const h = decodeURIComponent(location.hash);
+  if (!/^#(c=BZ-|[A-Za-z0-9]{6}$)/.test(h)) return;
+  try { applyShare(await decodeAny(h.replace(/^#c=/, ''))); }
+  catch(e) { alert('這個連結打不開：' + shareError(e)); }
   try { history.replaceState(null, '', location.href.split('#')[0]); } catch(e) {}
 }
 

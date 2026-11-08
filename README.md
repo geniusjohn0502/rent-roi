@@ -19,3 +19,12 @@
 - 帶出來的試算是一間還沒存檔的物件，對方自己存過的物件不會被動到
 - 代碼是按下按鈕那一刻的內容，之後改了數字要重新產生
 - 代碼放在網址 `#` 後面，這一段不會傳到 GitHub 的伺服器
+
+## 短代碼（2026-11-08 加入）
+
+- 按「產生代碼」會把長代碼存進 Cloudflare 小倉庫，換成 6 個字的短代碼（例如 `K7Q3MP`），連結變成 `…/rent-roi/#K7Q3MP`
+- 小倉庫：Cloudflare Worker `rent-roi-api`（https://rent-roi-api.line-checkin-bot.workers.dev ）＋ D1 資料庫 `rent-roi-db`，程式在 `worker/`
+- **60 天後自動清掉**：讀取時超過 60 天就當作找不到；每天台灣時間 04:00 排程刪掉過期的（灰哥 11/8 定：大家都能用，60 天清）
+- 任何人按「產生代碼」都會存進灰哥的小倉庫（只有物件名稱和數字）
+- 小倉庫連不上時，自動退回長代碼，長代碼和舊的 `#c=BZ-…` 連結都還能用
+- 改 Worker：`cd worker && npx wrangler deploy`（要先登入 Cloudflare）
