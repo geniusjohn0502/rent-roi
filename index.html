@@ -76,7 +76,7 @@
   .code-panel { margin-top: 10px; padding: 12px; border-radius: var(--radius); background: var(--bg-info); }
   .code-panel[hidden] { display: none; }
   .code-panel .code-label { font-size: 12px; color: var(--text-info); font-weight: 500; margin-bottom: 6px; display: block; }
-  .code-panel textarea.short { min-height: 0; height: 48px; font-size: 22px; font-weight: 600; letter-spacing: 0.2em; text-align: center; resize: none; }
+  .code-panel textarea.link { min-height: 0; font-size: 15px; resize: none; overflow: hidden; }
   .code-panel textarea { width: 100%; min-height: 72px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: var(--radius); border: 0.5px solid var(--border); background: var(--bg); color: var(--text); word-break: break-all; outline: none; }
   .code-panel .save-row { margin-top: 8px; }
   .code-msg { font-size: 12px; color: var(--text-success); }
@@ -904,12 +904,13 @@ async function showCode() {
   document.getElementById('codePanel').hidden = false;
   try {
     lastShort = await makeShort(lastCode);
-    document.getElementById('codeLabel').textContent = '代碼｜' + who + '（60 天內有效；之後改了數字，要重新產生一次）';
-    out.value = lastShort; out.classList.add('short');
+    document.getElementById('codeLabel').textContent = '連結｜' + who + '｜代碼 ' + lastShort + '（60 天內有效；之後改了數字，要重新產生一次）';
+    out.value = location.href.split('#')[0] + '#' + lastShort; out.classList.add('link');
+    out.style.height = 'auto'; out.style.height = (out.scrollHeight + 2) + 'px';
     msg.textContent = '';
   } catch(e) {
     document.getElementById('codeLabel').textContent = '代碼｜' + who + '（之後改了數字，要重新產生一次）';
-    out.value = lastCode; out.classList.remove('short');
+    out.value = lastCode; out.classList.remove('link'); out.style.height = '';
     msg.textContent = '短代碼暫時產生不了（可能沒網路），先用這組長代碼，一樣能用';
   }
 }
@@ -918,7 +919,7 @@ function copyShare(kind) {
   const text = kind === 'link' ? (lastShort ? base + '#' + lastShort : shareLink(lastCode)) : (lastShort || lastCode);
   const msg = document.getElementById('codeMsg');
   const ok = () => { msg.textContent = kind === 'link' ? '連結已複製，貼到 LINE 給老師，點開就看得到' : '代碼已複製，老師在這個網頁按「貼上代碼」貼上就好'; };
-  const fallback = () => { const box = document.getElementById('codeOut'); box.value = text; box.focus(); box.select(); msg.textContent = '已選取，請按 ⌘C（或 Ctrl+C）複製'; };
+  const fallback = () => { const box = document.getElementById('codeOut'); const old = box.value; box.value = text; box.focus(); box.select(); msg.textContent = '已選取，請按 ⌘C（或 Ctrl+C）複製'; if (old !== text) box.addEventListener('blur', () => { box.value = old; }, { once: true }); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fallback);
   else fallback();
 }
