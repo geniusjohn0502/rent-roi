@@ -82,6 +82,26 @@
   .code-msg { font-size: 12px; color: var(--text-success); }
   .code-msg.err { color: var(--text-danger); }
 
+  /* 共用連結（2026-11-14）：拿到連結的人都能改、存回 */
+  .shared-bar { background: var(--bg-success); border-radius: var(--radius-lg); padding: 12px 14px; margin-bottom: 1rem; }
+  .shared-bar[hidden] { display: none; }
+  .shared-title { font-size: 15px; font-weight: 500; color: var(--text-success); }
+  .shared-title b { font-family: ui-monospace, Menlo, monospace; letter-spacing: 0.06em; }
+  .shared-meta { font-size: 12px; color: var(--text2); margin-top: 4px; line-height: 1.6; }
+  .shared-dirty { font-size: 12px; font-weight: 500; color: var(--text-warn); margin-top: 4px; }
+  .shared-dirty[hidden] { display: none; }
+  .shared-bar .save-row { margin-top: 10px; }
+  .linkish { background: none; border: none; padding: 0; color: var(--text-info); text-decoration: underline; cursor: pointer; font-size: inherit; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .modal[hidden] { display: none; }
+  .modal-box { background: var(--bg); color: var(--text); border-radius: var(--radius-lg); padding: 18px; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; font-size: 14px; line-height: 1.75; }
+  .modal-box h4 { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
+  .modal-box p { margin-bottom: 8px; }
+  .modal-box .modal-input { margin: 6px 0 4px; }
+  .modal-btns { margin-top: 12px; justify-content: flex-end; }
+  .ver-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+  .ver-row .who { color: var(--text2); }
+
   /* Cost table — 欄位：項目 | 單價 | 數量 | 小計 | ✕ */
   .cost-cols { grid-template-columns: 2fr 100px 70px 100px 28px; }
   .cost-header { display: grid; gap: 6px; margin-bottom: 4px; }
@@ -159,7 +179,7 @@
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { background: #fff !important; color: #000 !important; padding: 0 !important; font-family: "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif; font-size: 10.5pt; }
     .container { max-width: 100% !important; margin: 0 !important; }
-    h1, .tab-row, .save-bar, footer, #tab0, #tab1, #tab2, #tab3, #tab4 { display: none !important; }
+    h1, .tab-row, .save-bar, .shared-bar, .modal, footer, #tab0, #tab1, #tab2, #tab3, #tab4 { display: none !important; }
     #pdf-report { display: block !important; }
     #pdf-report .pdf-title { font-size: 17pt; font-weight: bold; margin-bottom: 3pt; padding-bottom: 8pt; border-bottom: 2pt solid #000; }
     #pdf-report .pdf-subtitle { font-size: 8.5pt; color: #555; margin-bottom: 16pt; }
@@ -190,6 +210,24 @@
 <body>
 <div class="container">
   <h1>📊 包租物件投報率試算</h1>
+
+  <!-- 共用連結橫幅：從 6 個字的連結打開時才出現 -->
+  <div class="shared-bar" id="sharedBar" hidden>
+    <div class="shared-title">📎 你正在看共用連結 <b id="sharedId"></b></div>
+    <div class="shared-meta" id="sharedMeta"></div>
+    <div class="shared-meta">拿到這條連結的人都能改。改完按「存回這條連結」，大家重新打開就會看到新的版本。</div>
+    <div class="shared-dirty" id="sharedDirty" hidden>✏️ 畫面上有還沒存回的修改，按「存回這條連結」別人才看得到</div>
+    <div class="save-row">
+      <button class="btn btn-primary" onclick="saveShared()">💾 存回這條連結</button>
+      <button class="btn" onclick="showVersions()">🕘 看舊版本</button>
+      <button class="btn" onclick="saveToMine()">📁 存到我的物件</button>
+      <button class="btn btn-small" onclick="reloadShared()">↻ 看最新版</button>
+    </div>
+    <div class="shared-meta"><span id="editorLine"></span> <button class="linkish" onclick="changeEditor()">改名字</button></div>
+    <span class="code-msg" id="sharedMsg"></span>
+  </div>
+
+  <div class="modal" id="modal" hidden><div class="modal-box" role="dialog" aria-modal="true"><div id="modalBody"></div><div class="save-row modal-btns" id="modalBtns"></div></div></div>
 
   <!-- 物件存檔列 -->
   <div class="save-bar">
@@ -386,6 +424,7 @@ function clone(o) { return JSON.parse(JSON.stringify(o)); }
 let state = clone(DEFAULT_STATE);
 let costs = state.costs, rooms = state.rooms;
 let activeTab = 0;
+let shared = null; // 共用連結模式：{ id, version, editor, updated, expires, base }，base = 打開時的內容，用來判斷有沒有改過
 
 /* ---------- 小工具 ---------- */
 function fmt(n) { return Math.round(n).toLocaleString('zh-TW'); }
@@ -629,6 +668,7 @@ function loadState(data) {
 function saveDraft() {
   const s = readStore();
   s.draft = snapshot();
+  s.draftShared = shared ? { id: shared.id, version: shared.version, base: shared.base } : null;
   writeStore(s);
 }
 
@@ -642,6 +682,7 @@ function refreshList() {
 
 function updateStatus() {
   const s = readStore(), el = document.getElementById('saveStatus');
+  if (shared) { updateBanner(); el.className = 'save-status'; el.textContent = '畫面上是共用連結 ' + shared.id + ' 的內容（看上方綠色框）'; return; }
   const saved = s.current && s.props[s.current];
   if (!saved) {
     el.className = 'save-status dirty';
@@ -657,6 +698,7 @@ function updateStatus() {
 }
 
 function saveProp() {
+  if (shared) { saveToMine(); return; }
   const name = state.name.trim();
   if (!name) { alert('請先填物件名稱，例如：大安區四維路'); document.getElementById('propName').focus(); return; }
   const s = readStore();
@@ -675,7 +717,8 @@ function openProp(name) {
   if (!s.props[name]) return;
   const base = (s.current && s.props[s.current]) || DEFAULT_STATE;
   const dirty = comparable(base) !== comparable(snapshot());
-  if (dirty && !confirm('目前畫面上的修改還沒存檔，確定要打開「' + name + '」嗎？')) { refreshList(); return; }
+  if ((shared ? screenDirty() : dirty) && !confirm('目前畫面上的修改還沒存檔，確定要打開「' + name + '」嗎？')) { refreshList(); return; }
+  exitShared();
   loadState(s.props[name]);
   s.current = name;
   s.draft = snapshot();
@@ -686,6 +729,7 @@ function openProp(name) {
 
 function newProp() {
   if (!confirm('要開一間新物件嗎？畫面會回到預設數字（已存檔的物件不受影響）。')) return;
+  exitShared();
   loadState(DEFAULT_STATE);
   const s = readStore();
   s.current = '';
@@ -867,19 +911,20 @@ async function decodeShare(raw) {
 function shareLink(code) { return location.href.split('#')[0] + '#c=' + code; }
 
 /* ---------- 短代碼：長代碼存到 Cloudflare 小倉庫，換一組 6 個字，60 天後自動清掉 ---------- */
-const SHORT_API = 'https://rent-roi-api.line-checkin-bot.workers.dev';
+const SHORT_API = location.hostname === 'localhost' ? 'http://localhost:8787' : 'https://rent-roi-api.line-checkin-bot.workers.dev';
 async function makeShort(longCode) {
-  const res = await fetch(SHORT_API + '/s', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: longCode });
+  const res = await fetch(SHORT_API + '/s', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ code: longCode, editor: getEditor() }) });
   if (!res.ok) throw new Error('api');
-  return (await res.json()).id;
+  return res.json();
 }
-async function fetchShort(id) {
+async function apiGet(path) {
   let res;
-  try { res = await fetch(SHORT_API + '/s/' + id.toUpperCase()); } catch(e) { throw new Error('network'); }
+  try { res = await fetch(SHORT_API + path); } catch(e) { throw new Error('network'); }
   if (res.status === 404) throw new Error('notfound');
   if (!res.ok) throw new Error('network');
-  return (await res.json()).code;
+  return res.json();
 }
+const fetchShort = id => apiGet('/s/' + id.toUpperCase()); // 回 {code, version, editor, updated, expires}
 // 從貼上的文字找出代碼：長代碼 BZ-…、連結 #K7Q3MP、或單獨 6 個字
 function findShortId(raw) {
   const t = String(raw).trim();
@@ -890,21 +935,31 @@ async function decodeAny(raw) {
   if (/BZ-[zj]/.test(raw)) return decodeShare(raw);
   const id = findShortId(raw);
   if (!id) throw new Error('format');
-  return decodeShare(await fetchShort(id));
+  return decodeShare((await fetchShort(id)).code);
 }
 
 let lastCode = '', lastShort = '';
 async function showCode() {
+  const out = document.getElementById('codeOut'), msg = document.getElementById('codeMsg');
+  if (shared) { // 共用連結本身就是分享出去的那條，不另外產生
+    lastCode = await encodeShare(); lastShort = shared.id;
+    document.getElementById('pastePanel').hidden = true;
+    document.getElementById('codePanel').hidden = false;
+    document.getElementById('codeLabel').textContent = '這條就是共用連結｜代碼 ' + shared.id + '（拿到的人都能改；60 天沒人存檔才會自動清掉）';
+    out.value = location.href.split('#')[0] + '#' + shared.id; out.classList.add('link');
+    out.style.height = 'auto'; out.style.height = (out.scrollHeight + 2) + 'px';
+    msg.textContent = screenDirty() ? '畫面上的修改還沒存回，先按上方「存回這條連結」，別人才看得到' : '';
+    return;
+  }
   lastCode = await encodeShare();
   lastShort = '';
-  const out = document.getElementById('codeOut'), msg = document.getElementById('codeMsg');
   const who = (state.name.trim() || '未命名物件') + '｜' + todayStr();
   msg.textContent = '產生中…';
   document.getElementById('pastePanel').hidden = true;
   document.getElementById('codePanel').hidden = false;
   try {
-    lastShort = await makeShort(lastCode);
-    document.getElementById('codeLabel').textContent = '連結｜' + who + '｜代碼 ' + lastShort + '（60 天內有效；之後改了數字，要重新產生一次）';
+    lastShort = (await makeShort(lastCode)).id;
+    document.getElementById('codeLabel').textContent = '共用連結｜' + who + '｜代碼 ' + lastShort + '（拿到的人都能打開來改、按「存回這條連結」存檔，大家都看得到；60 天沒人存檔才會自動清掉）';
     out.value = location.href.split('#')[0] + '#' + lastShort; out.classList.add('link');
     out.style.height = 'auto'; out.style.height = (out.scrollHeight + 2) + 'px';
     msg.textContent = '';
@@ -918,7 +973,7 @@ function copyShare(kind) {
   const base = location.href.split('#')[0];
   const text = kind === 'link' ? (lastShort ? base + '#' + lastShort : shareLink(lastCode)) : (lastShort || lastCode);
   const msg = document.getElementById('codeMsg');
-  const ok = () => { msg.textContent = kind === 'link' ? '連結已複製，貼到 LINE 給老師，點開就看得到' : '代碼已複製，老師在這個網頁按「貼上代碼」貼上就好'; };
+  const ok = () => { msg.textContent = kind === 'link' ? '連結已複製，貼到 LINE 給老師，點開就能看、能改' : '代碼已複製，老師在這個網頁按「貼上代碼」貼上就好'; };
   const fallback = () => { const box = document.getElementById('codeOut'); const old = box.value; box.value = text; box.focus(); box.select(); msg.textContent = '已選取，請按 ⌘C（或 Ctrl+C）複製'; if (old !== text) box.addEventListener('blur', () => { box.value = old; }, { once: true }); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fallback);
   else fallback();
@@ -933,7 +988,7 @@ function closePaste() { document.getElementById('pastePanel').hidden = true; doc
 function shareError(e) {
   const k = e && e.message;
   if (k === 'browser') return '這個瀏覽器版本太舊，請改用最新版 Chrome 或 Safari 開啟';
-  if (k === 'notfound') return '找不到這組代碼：可能打錯字，或已經超過 60 天被清掉了';
+  if (k === 'notfound') return '找不到這組代碼：可能打錯字，或已經超過 60 天沒人存檔被清掉了';
   if (k === 'network') return '連不上代碼倉庫，請確認有網路再試一次';
   return '看不懂這組代碼，請確認是 6 個字的代碼，或整條連結都有複製到';
 }
@@ -941,10 +996,10 @@ function shareError(e) {
 // 把代碼的內容放到畫面上：當成一間還沒存檔的物件，看的人自己存過的物件不會被動到
 function applyShare(obj) {
   const s = readStore();
-  const base = (s.current && s.props[s.current]) || DEFAULT_STATE;
-  if (comparable(base) !== comparable(snapshot()) &&
+  if (screenDirty() &&
       !confirm('畫面上有還沒存檔的修改，帶出代碼的試算會取代畫面上的內容（已存檔的物件不受影響），確定嗎？')) return false;
-  loadState({ name: obj.n || '', costs: obj.c, rooms: obj.r, params: obj.p });
+  exitShared();
+  loadState(objData(obj));
   s.current = '';
   s.draft = snapshot();
   writeStore(s);
@@ -960,22 +1015,223 @@ async function loadPaste() {
   const msg = document.getElementById('pasteMsg'); msg.classList.remove('err');
   try {
     msg.textContent = '讀取中…';
-    const obj = await decodeAny(document.getElementById('pasteInput').value);
+    const raw = document.getElementById('pasteInput').value;
+    if (!/BZ-[zj]/.test(raw) && findShortId(raw)) { // 6 個字的代碼 = 共用連結，打開後可以存回
+      if (await openShared(findShortId(raw))) closePaste(); else msg.textContent = '';
+      return;
+    }
+    const obj = await decodeAny(raw);
     if (applyShare(obj)) closePaste();
   } catch(e) { msg.classList.add('err'); msg.textContent = shareError(e); }
 }
 async function loadFromLink() {
   const h = decodeURIComponent(location.hash);
-  if (!/^#(c=BZ-|[A-Za-z0-9]{6}$)/.test(h)) return;
+  const m = h.match(/^#([A-Za-z0-9]{6})$/);
+  if (m) { if (shared && shared.id === m[1].toUpperCase()) return; await openShared(m[1]); return; }
+  if (!/^#c=BZ-/.test(h)) return;
+  // 舊的長代碼連結：只能看，帶出來當一間還沒存檔的物件
   try { applyShare(await decodeAny(h.replace(/^#c=/, ''))); }
   catch(e) { alert('這個連結打不開：' + shareError(e)); }
-  try { history.replaceState(null, '', location.href.split('#')[0]); } catch(e) {}
+  setHash('');
+}
+
+/* ---------- 共用連結：拿到 6 個字連結的人都能改、存回（2026-11-14） ---------- */
+const EDITOR_KEY = 'rent-roi-editor';
+function getEditor() { try { return localStorage.getItem(EDITOR_KEY) || ''; } catch(e) { return ''; } }
+function setEditor(v) { try { localStorage.setItem(EDITOR_KEY, v); } catch(e) {} }
+function objData(obj) { return { name: obj.n || '', costs: obj.c, rooms: obj.r, params: obj.p }; }
+function normKey(d) { return JSON.stringify({ n: (d.name || '').trim(), c: d.costs, r: d.rooms, p: Object.assign(clone(DEFAULT_STATE.params), d.params || {}) }); }
+function screenDirty() {
+  if (shared) return normKey(snapshot()) !== shared.base;
+  const s = readStore();
+  if (s.draftShared && !s.current && normKey(snapshot()) === s.draftShared.base) return false;
+  const base = (s.current && s.props[s.current]) || DEFAULT_STATE;
+  return comparable(base) !== comparable(snapshot());
+}
+function setHash(id) { try { history.replaceState(null, '', location.href.split('#')[0] + (id ? '#' + id : '')); } catch(e) {} }
+function fmtTime(isoStr) { return new Date(isoStr).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+function fmtDate(isoStr) { return new Date(isoStr).toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' }); }
+
+function updateBanner() {
+  const bar = document.getElementById('sharedBar');
+  bar.hidden = !shared;
+  if (!shared) return;
+  document.getElementById('sharedId').textContent = shared.id;
+  document.getElementById('sharedMeta').textContent = '第 ' + shared.version + ' 版｜最後修改：' + (shared.editor || '（沒留名字）') + '，' + fmtTime(shared.updated) +
+    '｜' + fmtDate(shared.expires) + ' 前沒人存檔會自動清掉';
+  document.getElementById('sharedDirty').hidden = !screenDirty();
+  const ed = getEditor();
+  document.getElementById('editorLine').textContent = ed.trim() ? '你存檔時署名「' + ed.trim() + '」' : (ed ? '你存檔時不留名字' : '你還沒填名字，第一次存檔時會問');
+}
+function sharedMsg(t, err) { const m = document.getElementById('sharedMsg'); m.textContent = t || ''; m.classList.toggle('err', !!err); }
+
+// 小視窗：buttons = [{key, label, primary}]，回傳按了哪一個（按旁邊空白或 Esc = null）
+function ask(html, buttons) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('modal'), body = document.getElementById('modalBody'), btns = document.getElementById('modalBtns');
+    body.innerHTML = html;
+    btns.innerHTML = '';
+    const done = key => {
+      const input = body.querySelector('input');
+      ask.input = input ? input.value : '';
+      modal.hidden = true; modal.onclick = null; document.removeEventListener('keydown', onKey);
+      resolve(key);
+    };
+    const onKey = e => { if (e.key === 'Escape') done(null); if (e.key === 'Enter' && e.target.tagName === 'INPUT') { const p = buttons.find(b => b.primary); if (p) done(p.key); } };
+    buttons.forEach(b => { const el = document.createElement('button'); el.className = 'btn' + (b.primary ? ' btn-primary' : ''); el.textContent = b.label; el.onclick = () => done(b.key); btns.appendChild(el); });
+    body.querySelectorAll('[data-pick]').forEach(el => { el.onclick = () => done(el.dataset.pick); });
+    modal.onclick = e => { if (e.target === modal) done(null); };
+    document.addEventListener('keydown', onKey);
+    modal.hidden = false;
+    const first = body.querySelector('input') || btns.querySelector('.btn-primary');
+    if (first) first.focus();
+  });
+}
+
+async function askEditor(isChange) {
+  const k = await ask('<h4>' + (isChange ? '改名字' : '存檔前，留個名字') + '</h4><p>大家打開連結時會看到「最後修改：你的名字」，比較知道是誰改的。可以不填。</p>' +
+    '<input type="text" class="modal-input" maxlength="20" placeholder="例如：Anne 老師、灰哥" value="' + esc(getEditor()) + '">',
+    [{ key: null, label: '取消' }, { key: 'ok', label: isChange ? '好' : '存檔', primary: true }]);
+  if (k !== 'ok') return null;
+  const v = ask.input.trim().slice(0, 20);
+  setEditor(v || ' ');
+  return v;
+}
+async function changeEditor() { if ((await askEditor(true)) !== null) updateBanner(); }
+
+// 打開一條共用連結（從網址、或貼上 6 個字的代碼）。成功回傳 true
+async function openShared(id, force) { // force = 不問畫面上的修改（呼叫的人已經問過）
+  id = id.toUpperCase();
+  let data, obj;
+  try { data = await fetchShort(id); obj = await decodeShare(data.code); }
+  catch(e) { alert('這個連結打不開：' + shareError(e)); setHash(shared ? shared.id : ''); return false; }
+  const s = readStore(), serverData = objData(obj), serverKey = normKey(serverData);
+  const ds = s.draftShared, draftKey = normKey(snapshot());
+  let keepMine = false;
+  if (force) { /* 已經問過 */ }
+  else if (ds && ds.id === id && !shared && draftKey !== serverKey && draftKey !== ds.base) {
+    // 上次在這條連結改到一半、沒存回就關掉了
+    const k = await ask('<h4>你上次在這條連結改的還沒存回</h4><p>要繼續你上次的修改，還是看最新版（你上次沒存回的修改會不見）？</p>',
+      [{ key: 'latest', label: '看最新版' }, { key: 'mine', label: '繼續我的修改', primary: true }]);
+    keepMine = k === 'mine';
+  } else if (!(ds && ds.id === id && !shared) && screenDirty() &&
+             !confirm('畫面上有還沒存檔的修改，打開這條共用連結會取代畫面上的內容（已存檔的物件不受影響），確定嗎？')) {
+    setHash(shared ? shared.id : ''); return false;
+  }
+  shared = { id, version: data.version || 1, editor: data.editor || '', updated: data.updated, expires: data.expires, base: serverKey };
+  document.getElementById('codePanel').hidden = true;
+  if (keepMine) { shared.version = ds.version; shared.base = ds.base; }
+  else loadState(serverData);
+  s.current = '';
+  writeStore(s);
+  saveDraft();
+  setHash(id);
+  refreshList();
+  updateStatus();
+  sharedMsg(keepMine ? '已接回你上次的修改，確認後按「存回這條連結」' : '');
+  if (!keepMine) switchTab(3);
+  return true;
+}
+function exitShared() {
+  if (!shared) return;
+  shared = null;
+  setHash('');
+  sharedMsg('');
+  updateBanner();
+  document.getElementById('codePanel').hidden = true;
+  const s = readStore(); s.draftShared = null; writeStore(s);
+}
+
+async function reloadShared() {
+  if (!shared) return;
+  if (screenDirty() && !confirm('畫面上有還沒存回的修改，看最新版會把這些修改丟掉，確定嗎？')) return;
+  if (await openShared(shared.id, true)) sharedMsg('已經是最新版（第 ' + shared.version + ' 版）');
+}
+
+async function saveShared() {
+  if (!shared) return;
+  let editor = getEditor();
+  if (!editor) { editor = await askEditor(false); if (editor === null) return; }
+  editor = editor.trim();
+  sharedMsg('存檔中…');
+  let res, body;
+  try {
+    res = await fetch(SHORT_API + '/s/' + shared.id, { method: 'PUT', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ code: await encodeShare(), editor, base: shared.version }) });
+    body = await res.json();
+  } catch(e) { sharedMsg('存檔失敗：連不上倉庫，請確認有網路再按一次', true); return; }
+  if (res.status === 409) {
+    sharedMsg('');
+    const k = await ask('<h4>有人比你先存了一版</h4><p>你打開之後，<b>' + esc(body.editor || '有人') + '</b> 在 ' + fmtTime(body.updated) + ' 已經存過新的一版（第 ' + body.version + ' 版）。</p>' +
+      '<p>「看他的版本」：畫面換成他存的內容，<b>你這次的修改會不見</b>。<br>「用我的蓋過去」：存成你的內容，他那版還能從「看舊版本」找回來。</p>',
+      [{ key: null, label: '取消' }, { key: 'theirs', label: '看他的版本' }, { key: 'mine', label: '用我的蓋過去', primary: true }]);
+    if (k === 'theirs') { if (await openShared(shared.id, true)) sharedMsg('畫面換成最新版了（第 ' + shared.version + ' 版）'); }
+    else if (k === 'mine') { shared.version = body.version; await saveShared(); }
+    return;
+  }
+  if (res.status === 404) { sharedMsg('存檔失敗：這條連結已經過期被清掉了。可以按「存到我的物件」先留一份，再重新產生代碼', true); return; }
+  if (!res.ok) { sharedMsg('存檔失敗，請再按一次', true); return; }
+  Object.assign(shared, { version: body.version, editor: body.editor, updated: body.updated, expires: body.expires, base: normKey(snapshot()) });
+  saveDraft();
+  updateStatus();
+  sharedMsg('✅ 已存回（第 ' + body.version + ' 版），大家重新打開這條連結就會看到');
+}
+
+async function showVersions() {
+  if (!shared) return;
+  let items;
+  try { items = (await apiGet('/s/' + shared.id + '/history')).items; }
+  catch(e) { sharedMsg('讀不到舊版本：' + shareError(e), true); return; }
+  const rows = items.map(it => '<div class="ver-row"><span>第 ' + it.version + ' 版<span class="who">｜' + esc(it.editor || '（沒留名字）') + '，' + fmtTime(it.saved) + '</span></span>' +
+    '<button class="btn btn-small" data-pick="' + it.version + '">帶到畫面</button></div>').join('');
+  const k = await ask('<h4>舊版本</h4><p>現在是第 ' + shared.version + ' 版（' + esc(shared.editor || '沒留名字') + '，' + fmtTime(shared.updated) + '）。留最近 20 版。</p>' +
+    (rows || '<p>還沒有舊版本：這條連結還沒有人存回過。</p>') +
+    (rows ? '<p style="margin-top:10px;font-size:12px;color:var(--text2)">按「帶到畫面」只是先讓你看，確認沒問題再按「存回這條連結」，才算真的回到那一版。</p>' : ''),
+    [{ key: null, label: '關閉', primary: true }]);
+  if (!k) return;
+  const it = items.find(x => String(x.version) === k);
+  if (!it) return;
+  if (screenDirty() && !confirm('畫面上有還沒存回的修改，帶出舊版本會取代它們，確定嗎？')) return;
+  try { loadState(objData(await decodeShare(it.code))); } catch(e) { sharedMsg('這一版讀不出來', true); return; }
+  saveDraft();
+  updateStatus();
+  switchTab(3);
+  sharedMsg('畫面上是第 ' + it.version + ' 版的內容。要回到這一版，請按「存回這條連結」');
+}
+
+async function saveToMine() {
+  const k = await ask('<h4>存到我的物件</h4>' +
+    '<p>📎 <b>這條連結是大家共用的</b>：誰改了按「存回這條連結」，大家都會看到。</p>' +
+    '<p>📁 <b>想留一份只有你自己能改的版本</b>，就存到「我的物件」。它存在你這台電腦／手機的瀏覽器裡，之後從上方「已存的物件」打開。</p>' +
+    '<p>⚠️ 存到我的物件之後，別人在共用連結上的修改<b>不會</b>自動跑進你這份。想看最新版，就重新點那條連結。</p>' +
+    '<p>💡 想把自己的版本分享給老師：打開你自己的物件 → 按「產生代碼」，就會拿到一條<b>你自己的</b>新連結。</p>' +
+    '<p style="margin-top:10px">存成什麼名字？</p><input type="text" class="modal-input" placeholder="例如：大安區四維路（我的版本）" value="' + esc(state.name.trim()) + '">' +
+    '<p style="font-size:12px;color:var(--text2)">存完，畫面會換成你自己的這份（綠色框會消失）。</p>',
+    [{ key: null, label: '取消' }, { key: 'ok', label: '存到我的物件', primary: true }]);
+  if (k !== 'ok') return;
+  const name = ask.input.trim();
+  if (!name) { alert('請填一個名字，例如：大安區四維路'); return saveToMine(); }
+  const s = readStore();
+  if (s.props[name] && !confirm('你已經有一間叫「' + name + '」，要蓋掉它嗎？')) return;
+  state.name = name; document.getElementById('propName').value = name;
+  s.props[name] = Object.assign(snapshot(), { name, savedAt: new Date().toISOString() });
+  s.current = name;
+  s.draft = snapshot();
+  s.draftShared = null;
+  if (!writeStore(s)) { alert('存檔失敗：這個瀏覽器不允許存資料（例如無痕視窗）。'); return; }
+  shared = null; setHash(''); sharedMsg(''); updateBanner();
+  refreshList();
+  updateStatus();
+  const st = document.getElementById('saveStatus');
+  st.textContent = '已存到我的物件「' + name + '」。這份只有你自己能改；共用連結的最新版，要重新點那條連結看';
 }
 
 /* ---------- 開啟時：回到上次的畫面 ---------- */
 (function init() {
   const s = readStore();
   loadState(s.draft || (s.current && s.props[s.current]) || DEFAULT_STATE);
+  // 上次是在共用連結上、這次直接打開網址：回到那條共用連結（重新讀最新版）
+  if (!location.hash && s.draftShared && !s.current) setHash(s.draftShared.id);
   refreshList();
   updateStatus();
   loadFromLink();
