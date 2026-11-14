@@ -169,7 +169,14 @@
   .export-hints li strong { color: var(--text); }
 
   @media (max-width: 520px) {
-    .cost-cols { grid-template-columns: 1.5fr 85px 60px 85px 28px; }
+    /* 手機：每個項目分兩行——第一行項目名稱（整行寬），第二行 單價｜數量｜小計（2026-11-14，原本項目欄被擠到看不見） */
+    .cost-cols { grid-template-columns: minmax(0,1.2fr) minmax(0,0.8fr) minmax(0,1.2fr) 28px; }
+    .cost-cols > * { min-width: 0; }
+    .cost-header span:first-child { display: none; }
+    .cost-row { row-gap: 4px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 0.5px solid var(--border); }
+    .cost-row > :first-child { grid-column: 1 / 4; grid-row: 1; }
+    .cost-row > :last-child { grid-column: 4; grid-row: 1; }
+    .cost-row .subtotal-cell, .cost-row .auto-cell { padding: 6px 8px; }
     .result-grid { grid-template-columns: 1fr; }
     .grid2 { grid-template-columns: 1fr; }
   }
